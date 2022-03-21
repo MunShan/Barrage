@@ -9,4 +9,6 @@ class PortraitManager {
     fun detachBarrage(canvas: Canvas) {
 
     }
+    companion object
+
 }
