@@ -95,7 +95,12 @@ class BarrageQueue {
         Log.d("----------", "resetData: reset data lastShowBarrage")
     }
 
+    fun addBarrageData(data: List<Barrage>) {
+        barSortList.addAll(data)
+    }
+
     fun setBarrageData(data: List<Barrage>) {
+        resetData()
         barSortList.clear()
         barSortList.addAll(data)
         Log.d("------------", "setBarrageData: data ${data.size}")
