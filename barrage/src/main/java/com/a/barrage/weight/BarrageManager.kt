@@ -71,7 +71,6 @@ class BarrageQueue {
      * 当前在展示的弹幕
      */
     var showBarrageRow = ConcurrentLinkedQueue<ConcurrentLinkedDeque<Barrage>>()
-    private var textMapBar = hashMapOf<String, Barrage>()
 
     /**
      * 重置行数
@@ -90,13 +89,13 @@ class BarrageQueue {
     private fun resetData() {
         showBarrageRow.clear()
         showBarrageRow = ConcurrentLinkedQueue()
-        textMapBar.clear()
         lastShowBarrage = null
         Log.d("----------", "resetData: reset data lastShowBarrage")
     }
 
     fun addBarrageData(data: List<Barrage>) {
         barSortList.addAll(data)
+        dealBarrageStream()
     }
 
     fun setBarrageData(data: List<Barrage>) {
@@ -152,7 +151,6 @@ class BarrageQueue {
                     continue
                 }
                 if (addBar2barRow(currentTime, currentBarrage)) {
-                    textMapBar.putIfAbsent(currentBarrage.text, currentBarrage)
                     lastShowBarrage = currentBarrage
                 } else {
                     delay(delayTime)
@@ -175,7 +173,6 @@ class BarrageQueue {
         for (queue in showBarrageRow) {
             val lastT = queue?.lastOrNull()
             if (lastT == null || barrage.startShowTime >= lastT.completeShowTime) {
-                Log.d("------------", "addBar2barRow:1 ${barrage.text}")
                 queue.addLast(barrage)
                 return true
             }
@@ -183,23 +180,15 @@ class BarrageQueue {
             val gap = barrage.completeShowTime - barrage.startShowTime
             val isMoveCan = gap * 0.3 < currentTime - lastT.completeShowTime
             if (isMoveCan) {
-                Log.d("------------", "addBar2barRow:1 ${barrage.text}")
                 barrage.startShowTime = lastT.completeShowTime + intervals
                 barrage.completeShowTime = barrage.startShowTime + gap
                 queue.addLast(barrage)
                 return true
             }
         }
-        val shownBarrage = textMapBar[barrage.text]
-        if (shownBarrage != null) {
-            Log.d("------------", "addBar2barRow: textMapBar ${barrage.text}")
-            shownBarrage.setCount?.add(barrage.barId)
-            return true
-        }
         if (showBarrageRow.size <= rowCount) {
             val newQ = ConcurrentLinkedDeque<Barrage>()
             if (showBarrageRow.add(newQ)) {
-                Log.d("------------", "addBar2barRow: newQ ${barrage.text}")
                 newQ.addLast(barrage)
                 return true
             }
@@ -221,7 +210,6 @@ class BarrageQueue {
                 currentTime lastShowBar.startShowTime
              */
             showBarrageRow.clear()
-            textMapBar.clear()
             this.lastShowBarrage = null
             Log.d("----------", "removeLeftBarrage: reset time lastShowBarrage")
             return
@@ -234,7 +222,6 @@ class BarrageQueue {
                     // (currentTime - keepBarTime) (f.startShowTime) (currentTime)
                     break
                 }
-                textMapBar.remove(f.text)
                 Log.d("----------", "removeLeftBarrage: poll ${f.text}")
                 queue.poll()
                 f = queue.peek()

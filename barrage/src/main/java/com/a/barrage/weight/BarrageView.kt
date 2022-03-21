@@ -36,7 +36,7 @@ class BarrageView @JvmOverloads constructor(
         isFocusableInTouchMode = true
     }
 
-    fun setBarrageData(data: List<Barrage>) {
+    fun setBarrageData(data: List<Barrage>, isReset: Boolean = true) {
         val measuredWidth = measuredWidth.toFloat()
         if (measuredWidth <= 0) {
             // todo lifecycleScope
@@ -47,13 +47,21 @@ class BarrageView @JvmOverloads constructor(
             return
         }
         data.forEach {
+            val count = it.setCount?.size
+            if (count != null && count > 1) {
+                it.text = "${it.text}($count)"
+            }
             it.textWidth = textPaint.measureText(it.text)
             // ([textWidth] / view.width) * [BarrageQueue.keepBarTime] + [startShowTime]
             val rate = it.textWidth / measuredWidth
             it.completeShowTime =
                 (rate * barrageQueue.keepBarTime + it.startShowTime).toInt()
         }
-        barrageQueue.setBarrageData(data)
+        if (isReset) {
+            barrageQueue.setBarrageData(data)
+        } else {
+            barrageQueue.addBarrageData(data)
+        }
     }
 
     /**
