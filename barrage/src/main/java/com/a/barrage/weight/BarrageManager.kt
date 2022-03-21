@@ -2,28 +2,39 @@ package com.a.barrage.weight
 
 import android.util.Log
 import kotlinx.coroutines.*
-import java.util.*
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.ConcurrentLinkedQueue
-import kotlin.math.min
 
 
 class Barrage(
     var text: String,
-    var count: Int,
-    var barId: Long,
-    var startShowTime: Long,
-    var textWidth: Int,
+    var barId: Long = -1,
+    var startShowTime: Int
+) {
+    var textWidth: Float = 0f
+
+    var setCount : HashSet<Long>? = null
+        get() {
+            if (field != null) {
+                return field
+            }
+            val set = hashSetOf<Long>()
+            field = set
+            return set
+        }
+
     /**
      * [text] 相对于 [startShowTime] 在右边完整显示时间
      * ([textWidth] / view.width) * [BarrageQueue.keepBarTime] + [startShowTime]
      */
-    var completeShowTime: Long
-) {
-    var lockX: Int? = null
+    var completeShowTime: Int = startShowTime
     fun getShowX(keepTime: Int, currentTime: Long, viewWidth: Int): Float {
-        val xPlace = (1f - (currentTime - startShowTime).toFloat() / keepTime.toFloat()) * viewWidth
-        Log.d("-----", "getShowX: $xPlace")
+        if (currentTime < startShowTime) {
+            return viewWidth.toFloat()
+        }
+        val showTime = currentTime - startShowTime
+        val rate = showTime.toFloat() / keepTime.toFloat()
+        val xPlace = (1f - rate) * viewWidth
         return xPlace
     }
 }
@@ -31,19 +42,25 @@ class Barrage(
 private val barrageScope = CoroutineScope(Dispatchers.IO)
 
 class BarrageQueue {
-    var keepBarTime: Int = 0
+    var keepBarTime: Int = 4 * 1000
+    var intervals: Int = 32
     var rowCount: Int = 1
 
     /**
      * lastShowBar
      * [barSortList] is sortSet
      */
+    @Volatile
     private var lastShowBarrage: Barrage? = null
+
+    /**
+     * 所有barrage
+     */
     private var barSortList = sortedSetOf(Comparator<Barrage> { p0, p1 ->
         if (p0.startShowTime == p1.startShowTime) {
             p0.barId.compareTo(p1.barId)
         } else {
-            p1.startShowTime.compareTo(p0.startShowTime)
+            p0.startShowTime.compareTo(p1.startShowTime)
         }
     })
     var getShowTime: (() -> Long)? = null
@@ -51,22 +68,38 @@ class BarrageQueue {
     private var lastJob: Job? = null
 
     /**
-     * --- --
-     * --  -
+     * 当前在展示的弹幕
      */
     var showBarrageRow = ConcurrentLinkedQueue<ConcurrentLinkedDeque<Barrage>>()
     private var textMapBar = hashMapOf<String, Barrage>()
+
+    /**
+     * 重置行数
+     */
     fun resetRow(rowCount: Int) {
         if (rowCount >= this.rowCount) {
             this.rowCount = rowCount
             return
         }
         this.rowCount = rowCount
+        resetData()
+        // dealBarrageStream 根据当前时间重新入队
+        dealBarrageStream()
+    }
+
+    private fun resetData() {
         showBarrageRow.clear()
         showBarrageRow = ConcurrentLinkedQueue()
         textMapBar.clear()
         lastShowBarrage = null
-        // dealBarrageStream 根据当前时间重新入队
+        Log.d("----------", "resetData: reset data lastShowBarrage")
+    }
+
+    fun setBarrageData(data: List<Barrage>) {
+        barSortList.clear()
+        barSortList.addAll(data)
+        Log.d("------------", "setBarrageData: data ${data.size}")
+        Log.d("------------", "setBarrageData: barSortList ${barSortList.size}")
         dealBarrageStream()
     }
 
@@ -83,6 +116,11 @@ class BarrageQueue {
         lastJob?.cancel()
         lastJob = barrageScope.launch {
             var delayTime = 128L
+            val findB = Barrage(
+                text = "",
+                startShowTime = 0,
+                barId = 0
+            )
             while (isActive) {
                 removeLeftBarrage()
                 val currentTime = getShowTime?.invoke()
@@ -91,10 +129,10 @@ class BarrageQueue {
                     delay(delayTime)
                     continue
                 }
+                val isHadLast = lastShowBarrage != null
                 if (lastShowBarrage == null) {
-                    lastShowBarrage = barSortList.first {
-                        it.startShowTime >= currentTime
-                    }
+                    findB.startShowTime = (currentTime - keepBarTime).toInt().coerceAtLeast(0)
+                    lastShowBarrage = barSortList.higher(findB)
                 }
                 val lastShowBar = lastShowBarrage
                 if (lastShowBar == null) {
@@ -102,8 +140,8 @@ class BarrageQueue {
                     delay(delayTime)
                     continue
                 }
-                val currentBarrage = barSortList.higher(lastShowBar)
-                if (currentBarrage == null || currentBarrage.startShowTime < currentTime) {
+                val currentBarrage = if (isHadLast) barSortList.higher(lastShowBar) else lastShowBar
+                if (currentBarrage == null || currentBarrage.startShowTime > currentTime) {
                     // barrage 不满足
                     delay(delayTime)
                     continue
@@ -111,14 +149,17 @@ class BarrageQueue {
                 if (addBar2barRow(currentTime, currentBarrage)) {
                     textMapBar.putIfAbsent(currentBarrage.text, currentBarrage)
                     lastShowBarrage = currentBarrage
+                } else {
+                    delay(delayTime)
+                    continue
                 }
                 val nextBarrage = barSortList.higher(currentBarrage)
                 if (nextBarrage == null) {
                     delay(delayTime)
                     continue
                 }
-                if (nextBarrage.startShowTime < currentTime) {
-                    delayTime = min(128L, currentTime - nextBarrage.startShowTime)
+                if (nextBarrage.startShowTime > currentTime) {
+                    delayTime = nextBarrage.startShowTime - currentTime
                     delay(delayTime)
                 }
             }
@@ -127,20 +168,35 @@ class BarrageQueue {
 
     private fun addBar2barRow(currentTime: Long, barrage: Barrage): Boolean {
         for (queue in showBarrageRow) {
-            if (queue?.last?.completeShowTime ?: -1 <= currentTime) {
-                queue.add(barrage)
+            val lastT = queue?.lastOrNull()
+            if (lastT == null || barrage.startShowTime >= lastT.completeShowTime) {
+                Log.d("------------", "addBar2barRow:1 ${barrage.text}")
+                queue.addLast(barrage)
+                return true
+            }
+//            val isInCan = lastT.startShowTime<= barrage.startShowTime && barrage.startShowTime <= lastT.completeShowTime &&
+            val gap = barrage.completeShowTime - barrage.startShowTime
+            val isMoveCan = gap * 0.3 < currentTime - lastT.completeShowTime
+            if (isMoveCan) {
+                Log.d("------------", "addBar2barRow:1 ${barrage.text}")
+                barrage.startShowTime = lastT.completeShowTime + intervals
+                barrage.completeShowTime = barrage.startShowTime + gap
+                queue.addLast(barrage)
                 return true
             }
         }
         val shownBarrage = textMapBar[barrage.text]
         if (shownBarrage != null) {
-            shownBarrage.count++
+            Log.d("------------", "addBar2barRow: textMapBar ${barrage.text}")
+            shownBarrage.setCount?.add(barrage.barId)
             return true
         }
-        if (showBarrageRow.size < rowCount) {
+        if (showBarrageRow.size <= rowCount) {
             val newQ = ConcurrentLinkedDeque<Barrage>()
             if (showBarrageRow.add(newQ)) {
-                newQ.offer(barrage)
+                Log.d("------------", "addBar2barRow: newQ ${barrage.text}")
+                newQ.addLast(barrage)
+                return true
             }
         }
         return false
@@ -151,21 +207,30 @@ class BarrageQueue {
      */
     private fun removeLeftBarrage() {
         val currentTime = getShowTime?.invoke() ?: return
+        // todo min(queue.fist)
         val lastShowBar = lastShowBarrage ?: return
         if (currentTime < lastShowBar.startShowTime) {
-            // 表示 显示时间被调整
+
+            /*
+                表示 显示时间被调整
+                currentTime lastShowBar.startShowTime
+             */
             showBarrageRow.clear()
             textMapBar.clear()
             this.lastShowBarrage = null
+            Log.d("----------", "removeLeftBarrage: reset time lastShowBarrage")
             return
         }
+        // (lastShowBar.startShowTime) currentTime
         for (queue in showBarrageRow) {
-            var f = queue?.first
+            var f = queue?.firstOrNull()
             while (f != null) {
-                if (f.startShowTime + keepBarTime <= currentTime) {
+                if (currentTime - keepBarTime <= f.completeShowTime && f.startShowTime <= currentTime) {
+                    // (currentTime - keepBarTime) (f.startShowTime) (currentTime)
                     break
                 }
                 textMapBar.remove(f.text)
+                Log.d("----------", "removeLeftBarrage: poll ${f.text}")
                 queue.poll()
                 f = queue.peek()
             }
