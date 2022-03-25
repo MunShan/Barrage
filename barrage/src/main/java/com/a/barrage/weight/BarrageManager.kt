@@ -82,6 +82,7 @@ class BarrageQueue {
 
     fun addBarrageData(data: List<Barrage>) {
         barSortList.addAll(data)
+        // todo varSortList.headSet
         Log.d("------------", "setBarrageData: barSortList ${barSortList.size}")
         dealBarrageStream()
     }
