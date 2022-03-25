@@ -3,7 +3,6 @@ package com.a.barrage.weight
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
-import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import kotlinx.coroutines.*
@@ -16,6 +15,7 @@ class BarrageView @JvmOverloads constructor(
     private val barrageQueue = BarrageQueue().apply {
         rowCount = 7
         getShowTime = this@BarrageView::getCurrentTime
+        getMeasuredWidth = this@BarrageView::getMeasuredWidth
     }
     private val textPaint = Paint().apply {
         color = Color.BLUE
@@ -42,20 +42,26 @@ class BarrageView @JvmOverloads constructor(
             // todo lifecycleScope
             scope.launch {
                 delay(128)
-                setBarrageData(data)
+                setBarrageData(data, isReset)
             }
             return
         }
+        val offsetL = -1 +
+                if (!isReset)
+                    (data.size / 16).coerceAtMost(5)
+                else
+                    data.size / 1000
         data.forEach {
             val count = it.setCount?.size
             if (count != null && count > 1) {
                 it.text = "${it.text}($count)"
             }
             it.textWidth = textPaint.measureText(it.text)
-            // ([textWidth] / view.width) * [BarrageQueue.keepBarTime] + [startShowTime]
-            val rate = it.textWidth / measuredWidth
-            it.completeShowTime =
-                (rate * barrageQueue.keepBarTime + it.startShowTime).toInt()
+            it.lastX = measuredWidth.toInt()
+            // todo
+
+            it.xOffset =
+                (offsetL + it.text.length).coerceAtLeast(2)
         }
         if (isReset) {
             barrageQueue.setBarrageData(data)
@@ -81,17 +87,18 @@ class BarrageView @JvmOverloads constructor(
                 var y = 36f
                 for (q in barrageQueue.showBarrageRow) {
                     for (barrage in q) {
-                        val x = barrage.getShowX(
-                            barrageQueue.keepBarTime,
-                            getCurrentTime(),
-                            measuredWidth
-                        )
+                        val x = barrage.lastX.toFloat()
                         canvas?.drawText(
                             barrage.text, x, y, textPaint
                         )
                         drawCount++
                     }
                     y += 48
+                }
+                for (q in barrageQueue.showBarrageRow) {
+                    for (barrage in q) {
+                        barrage.lastX -= barrage.xOffset
+                    }
                 }
             } finally {
                 if (canvas != null) {

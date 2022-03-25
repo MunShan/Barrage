@@ -4,10 +4,11 @@ import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import com.a.barrage.weight.Barrage
-import com.a.barrage.weight.BarrageQueue
 import com.a.barrage.weight.BarrageView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private val testT = 60 * 60 * 1000L
@@ -27,13 +28,13 @@ class MainActivity : AppCompatActivity() {
         bd.getShowTime = {
             (System.currentTimeMillis() - testTime).coerceAtMost(testT)
         }
-        lifecycleScope.launchWhenResumed {
+        lifecycleScope.launch(Dispatchers.IO) {
             var barId = 1L
             var sTime = 0
             while (isActive) {
                 val textMap = hashMapOf<String, Barrage>()
                 bd.setBarrageData(mutableListOf<Barrage>().apply {
-                    val range = 100..300
+                    val range = 1..120
                     for (i in 1..100) {
                         val t = range.random()
                         add(
@@ -43,17 +44,7 @@ class MainActivity : AppCompatActivity() {
                                 barId = barId++
                             )
                         )
-                        sTime += t
-                    }
-                    for (j in 1..16) {
-                        add(
-                            Barrage(
-                                text = "哈哈哈",
-                                startShowTime = sTime,
-                                barId = barId++
-                            )
-                        )
-                        sTime += j
+                        sTime += 1
                     }
                 }.mapNotNull {
                     val same = textMap[it.text]
@@ -65,7 +56,7 @@ class MainActivity : AppCompatActivity() {
                     same.setCount?.add(it.barId)
                     return@mapNotNull null
                 }, false)
-                delay((1..1000L).random())
+                delay((1000L..2000L).random())
             }
         }
     }
