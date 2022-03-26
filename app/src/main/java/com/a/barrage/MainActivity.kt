@@ -2,6 +2,7 @@ package com.a.barrage
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import com.a.barrage.weight.Barrage
 import com.a.barrage.weight.BarrageView
@@ -27,6 +28,12 @@ class MainActivity : AppCompatActivity() {
         val testTime = System.currentTimeMillis()
         bd.getShowTime = {
             (System.currentTimeMillis() - testTime).coerceAtMost(testT)
+        }
+        bd.actionBarrage = {
+            val ctx = application
+            if (ctx != null) {
+                Toast.makeText(ctx, it.text, Toast.LENGTH_LONG).show()
+            }
         }
         lifecycleScope.launch(Dispatchers.IO) {
             var barId = 1L

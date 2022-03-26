@@ -24,6 +24,7 @@ class Barrage(
         }
     var lastX = 0
     var xOffset = 1
+    var isLock = false
 }
 
 private val barrageScope = CoroutineScope(Dispatchers.IO)
