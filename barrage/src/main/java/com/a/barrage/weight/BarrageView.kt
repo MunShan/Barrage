@@ -2,6 +2,7 @@ package com.a.barrage.weight
 
 import android.content.Context
 import android.graphics.*
+import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -58,7 +59,7 @@ class BarrageView @JvmOverloads constructor(
             }
             it.textWidth = textPaint.measureText(it.text)
             it.lastX = measuredWidth.toInt()
-            it.xOffset = it.text.length - 1.coerceAtLeast(2)
+            it.xOffset = (it.text.length - 1).coerceAtLeast(2)
         }
         if (isReset) {
             barrageQueue.setBarrageData(data)
@@ -81,6 +82,9 @@ class BarrageView @JvmOverloads constructor(
             try {
                 canvas = mSurfaceHolder?.lockCanvas()
                 canvas?.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    canvas?.clipOutRect(Rect(280,240,920,930))
+                }
                 var y = yStart
                 for (q in barrageQueue.showBarrageRow) {
                     for (barrage in q) {
